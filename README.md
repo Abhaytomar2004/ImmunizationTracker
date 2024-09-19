@@ -21,16 +21,19 @@ Spring Data JPA
 RESTful APIs
 Hibernate (MySQL)
 Postman
-Swagger
 Email Integration
 Maven
 Git & GitHub
-IntelliJ IDEA
-Overview of the Project
-Flow Diagram
+SpringToolSuite
+# Overview of Project
+## Flow Diagram
+![VaccineMS](https://github.com/im-arbazalam/VaccineManagementSystem/assets/114339920/a5192219-3bd4-402c-afe5-c4b34bfe420d)
+
 
 
 API Screenshots
+![Screenshot (39)](https://github.com/im-arbazalam/VaccineManagementSystem/assets/114339920/4820dc56-6150-4608-b4f9-c1063e45ae3e)
+![Screenshot (40)](https://github.com/im-arbazalam/VaccineManagementSystem/assets/114339920/b79c6241-7568-4278-b6d7-58957e421c97)
 
 
 Usage
