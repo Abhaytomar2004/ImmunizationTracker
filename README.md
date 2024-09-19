@@ -1,4 +1,5 @@
  #ImmunizationTracker
+ 
 **The ImmunizationTracker (Backend) is a robust and efficient backend system developed using Spring Boot, Hibernate, JPA, and MySQL. It serves as the core component of a comprehensive vaccine management solution, focusing on managing data and providing APIs for seamless interaction with the system. This backend system plays a crucial role in tracking doctors, vaccination centers, appointments, and doses administered to users.**
 
 # Features 
@@ -49,12 +50,12 @@ scheduling.
 1.  API Integration: Developers can integrate the system with other applications or services using the provided APIs.
 
 # Code Organization
-The code for this Vaccination Management system can be organized into separate classes or packages for each entity,
+The code for this ImmunizationTracker can be organized into separate classes or packages for each entity,
 along with any necessary helper classes or functions. The code follow Object-Oriented Programming principles and 
 best practices such as encapsulation, modularity, and proper separation of concerns.
 
 # Setup and Installation
-To set up the Vaccination Management System locally, follow these steps:
+To set up the ImmunizationTracker  locally, follow these steps:
 
 1.  Clone the repository from GitHub.
 1.  Open the project in your preferred IDE.
@@ -64,6 +65,6 @@ To set up the Vaccination Management System locally, follow these steps:
 1.  Access the API endpoints using a tool like Swagger or Postman.
 
  # Contributions
- Contributions to the Vaccination Management System are welcome! If you encounter any issues or have suggestions
+ Contributions to the ImmunizationTracker  are welcome! If you encounter any issues or have suggestions
  for improvement, please create a new issue or submit a pull request.
 
