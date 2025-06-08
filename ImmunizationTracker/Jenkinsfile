@@ -1,40 +1,40 @@
 pipeline {
     agent any
-     tools {
-        maven 'Maven 3.9.9' 
+    tools {
+        maven 'Maven 3.9.9'
     }
-    
     environment {
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
     }
-    
     stages {
         stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git'
             }
         }
-        
         stage('Build') {
             steps {
-                bat 'mvn clean package'
-            }
-        }
-        
-        stage('Test') {
-            steps {
-                bat 'mvn test'
-            }
-        }
-        
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    docker.build("abhaytomar2004/immunizationtracker:${env.BUILD_ID}")
+                dir('ImmunizationTracker') {
+                    bat 'mvn clean package'
                 }
             }
         }
-        
+        stage('Test') {
+            steps {
+                dir('ImmunizationTracker') {
+                    bat 'mvn test'
+                }
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                dir('ImmunizationTracker') {
+                    script {
+                        docker.build("abhaytomar2004/immunizationtracker:${env.BUILD_ID}", ".")
+                    }
+                }
+            }
+        }
         stage('Push Docker Image') {
             steps {
                 script {
@@ -45,19 +45,18 @@ pipeline {
                 }
             }
         }
-        
         stage('Deploy to Kubernetes') {
             steps {
-                bat 'kubectl apply -f k8s/mysql-pv.yaml'
-                bat 'kubectl apply -f k8s/mysql-deployment.yaml'
-                // Wait for MySQL to be ready
-                bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
-                bat 'kubectl apply -f k8s/deployment.yaml'
-                bat 'kubectl apply -f k8s/service.yaml'
+                dir('ImmunizationTracker') {
+                    bat 'kubectl apply -f k8s/mysql-pv.yaml'
+                    bat 'kubectl apply -f k8s/mysql-deployment.yaml'
+                    bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
+                    bat 'kubectl apply -f k8s/deployment.yaml'
+                    bat 'kubectl apply -f k8s/service.yaml'
+                }
             }
         }
     }
-    
     post {
         always {
             cleanWs()
