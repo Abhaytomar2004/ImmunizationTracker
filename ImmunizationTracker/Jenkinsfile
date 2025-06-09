@@ -27,26 +27,29 @@ pipeline {
                 }
             }
         }
-        stage('Build Docker Image') {
-            steps {
-                dir('ImmunizationTracker') {
-                    script {
-                    docker.build("abhaytomar2004/immunizationtracker:${env.BUILD_ID}", ".")
+      stage('Build Docker Image') {
+    steps {
+        dir('ImmunizationTracker') {
+            script {
+                // Build Docker image from Dockerfile inside ImmunizationTracker directory
+                def image = docker.build("abhaytomar2004/immunizationtracker:${env.BUILD_ID}", ".")
+                // Save the image for pushing in next stage using environment variable or stash
+                env.IMAGE_NAME = image.imageName()
+            }
+        }
+    }
+}
 
-                    }
-                }
+stage('Push Docker Image') {
+    steps {
+        script {
+            docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
+                def image = docker.image(env.IMAGE_NAME)
+                image.push()
             }
         }
-        stage('Push Docker Image') {
-            steps {
-                script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
-            def image = docker build -f ImmunizationTracker/Dockerfile -t abhaytomar2004/immunizationtracker:16 ImmunizationTracker/
-            image.push()
-                    }
-                }
-            }
-        }
+    }
+}
         stage('Deploy to Kubernetes') {
             steps {
                 dir('ImmunizationTracker') {
