@@ -50,13 +50,31 @@ pipeline {
             }
         }
         stage('Deploy to Kubernetes') {
+            when {
+                expression {
+                    return fileExists('ImmunizationTracker/k8s/deployment.yaml')
+                }
+            }
             steps {
                 dir('ImmunizationTracker') {
-                    bat 'kubectl apply -f k8s/mysql-pv.yaml'
-                    bat 'kubectl apply -f k8s/mysql-deployment.yaml'
-                    bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
-                    bat 'kubectl apply -f k8s/deployment.yaml'
-                    bat 'kubectl apply -f k8s/service.yaml'
+                    // Optional: You can wrap with kubeconfig credentials if needed
+                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                        script {
+                            def base = 'k8s'
+                            def files = ['mysql-pv.yaml', 'mysql-deployment.yaml', 'deployment.yaml', 'service.yaml']
+                            for (f in files) {
+                                if (fileExists("${base}/${f}")) {
+                                    bat "kubectl apply -f ${base}/${f}"
+                                } else {
+                                    echo "Skipped: ${f} not found."
+                                }
+                            }
+                            // Wait for MySQL pod only if its deployment exists
+                            if (fileExists("${base}/mysql-deployment.yaml")) {
+                                bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
+                            }
+                        }
+                    }
                 }
             }
         }
