@@ -31,7 +31,8 @@ pipeline {
             steps {
                 dir('ImmunizationTracker') {
                     script {
-                        docker.build("abhaytomar2004/immunizationtracker:${env.BUILD_ID}", ".")
+                      docker build -f ImmunizationTracker/Dockerfile -t abhaytomar2004/immunizationtracker:16 ImmunizationTracker/
+
                     }
                 }
             }
