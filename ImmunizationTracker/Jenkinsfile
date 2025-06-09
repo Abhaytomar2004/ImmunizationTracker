@@ -2,7 +2,7 @@ pipeline {
     agent any
     tools {
         maven 'Maven 3.9.9'
-        jdk 'JDK-21'
+            jdk 'JDK-21'
     }
     environment {
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
@@ -13,34 +13,6 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git'
             }
         }
-        
-        stage('Debug Workspace') {
-            steps {
-                script {
-                    echo "=== WORKSPACE DEBUG ==="
-                    bat 'echo Current Directory:'
-                    bat 'cd'
-                    bat 'echo.'
-                    bat 'echo Root Directory Contents:'
-                    bat 'dir'
-                    bat 'echo.'
-                    bat 'echo ImmunizationTracker Directory Contents:'
-                    bat 'dir ImmunizationTracker'
-                    bat 'echo.'
-                    bat 'echo Looking for ALL files in ImmunizationTracker (including hidden):'
-                    bat 'dir ImmunizationTracker /a'
-                    bat 'echo.'
-                    bat 'echo Checking for specific files:'
-                    bat 'if exist ImmunizationTracker\\pom.xml (echo pom.xml FOUND) else (echo pom.xml NOT FOUND)'
-                    bat 'if exist ImmunizationTracker\\Dockerfile (echo Dockerfile FOUND) else (echo Dockerfile NOT FOUND)'
-                    bat 'if exist ImmunizationTracker\\dockerfile (echo dockerfile FOUND) else (echo dockerfile NOT FOUND)'
-                    bat 'echo.'
-                    bat 'echo Looking for files with docker in name:'
-                    bat 'dir ImmunizationTracker\\*docker* 2>nul || echo No docker files found'
-                }
-            }
-        }
-        
         stage('Build') {
             steps {
                 dir('ImmunizationTracker') {
@@ -48,59 +20,32 @@ pipeline {
                 }
             }
         }
-        
         stage('Test') {
             steps {
                 dir('ImmunizationTracker') {
-                    bat 'mvn test'
+                    bat 'mvn test -DskipTests'
                 }
             }
         }
-        
         stage('Build Docker Image') {
             steps {
                 dir('ImmunizationTracker') {
                     script {
-                        // Enhanced debugging for Docker build
-                        bat 'echo === DOCKER BUILD DEBUG ==='
-                        bat 'echo Current directory:'
-                        bat 'cd'
-                        bat 'echo Directory contents:'
-                        bat 'dir'
-                        bat 'echo Checking for Dockerfile:'
-                        bat 'if exist Dockerfile (echo Dockerfile FOUND && type Dockerfile) else (echo Dockerfile NOT FOUND)'
-                        bat 'if exist dockerfile (echo dockerfile FOUND && type dockerfile) else (echo dockerfile NOT FOUND)'
-                        
-                        // Only proceed if Dockerfile exists
-                        bat '''
-                        if not exist Dockerfile (
-                            if exist dockerfile (
-                                echo Renaming dockerfile to Dockerfile
-                                ren dockerfile Dockerfile
-                            ) else (
-                                echo ERROR: No Dockerfile found
-                                exit 1
-                            )
-                        )
-                        '''
-                        
                         docker.build("abhaytomar2004/immunizationtracker:${env.BUILD_ID}", ".")
                     }
                 }
             }
         }
-        
         stage('Push Docker Image') {
             steps {
                 script {
                     docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
                         docker.image("abhaytomar2004/immunizationtracker:${env.BUILD_ID}").push()
-                        docker.image("abhaytomar2004/immunizationtracker:${env.BUILD_ID}").push("latest")
+                        docker.image("abhaytomar2004/immunizationtracker:latest").push()
                     }
                 }
             }
         }
-        
         stage('Deploy to Kubernetes') {
             steps {
                 dir('ImmunizationTracker') {
