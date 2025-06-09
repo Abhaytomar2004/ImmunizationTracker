@@ -44,7 +44,7 @@
     <groupId>org.projectlombok</groupId>
     <artifactId>lombok</artifactId>
     <version>1.18.32</version> <!-- Add explicit version -->
-    <scope>provided</scope>
+    <scope>compile</scope>
      </dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
