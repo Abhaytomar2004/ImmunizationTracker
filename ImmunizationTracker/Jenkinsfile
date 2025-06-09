@@ -2,7 +2,7 @@ pipeline {
     agent any
     tools {
         maven 'Maven 3.9.9'
-            jdk 'JDK-21'
+        jdk 'JDK-21'
     }
     environment {
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
@@ -13,48 +13,65 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git'
             }
         }
+        
+        stage('Debug Workspace') {
+            steps {
+                script {
+                    echo "=== WORKSPACE DEBUG ==="
+                    bat 'echo Current Directory:'
+                    bat 'cd'
+                    bat 'echo.'
+                    bat 'echo Directory Contents:'
+                    bat 'dir'
+                    bat 'echo.'
+                    bat 'echo Looking for Dockerfile:'
+                    bat 'if exist Dockerfile (echo Dockerfile FOUND) else (echo Dockerfile NOT FOUND)'
+                    bat 'echo.'
+                    bat 'echo Looking for pom.xml:'
+                    bat 'if exist pom.xml (echo pom.xml FOUND) else (echo pom.xml NOT FOUND)'
+                }
+            }
+        }
+        
         stage('Build') {
             steps {
-                dir('ImmunizationTracker') {
-                    bat 'mvn clean package -DskipTests'
-                }
+                bat 'mvn clean package -DskipTests'
             }
         }
+        
         stage('Test') {
             steps {
-                dir('ImmunizationTracker') {
-                    bat 'mvn test -DskipTests'
-                }
+                bat 'mvn test -DskipTests'
             }
         }
+        
         stage('Build Docker Image') {
             steps {
-                dir('ImmunizationTracker') {
-                    script {
-                        docker.build("abhaytomar2004/immunizationtracker:${env.BUILD_ID}", ".")
-                    }
+                script {
+                    bat 'if not exist Dockerfile (echo ERROR: Dockerfile not found && exit 1)'
+                    docker.build("abhaytomar2004/immunizationtracker:${env.BUILD_ID}", ".")
                 }
             }
         }
+        
         stage('Push Docker Image') {
             steps {
                 script {
                     docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
                         docker.image("abhaytomar2004/immunizationtracker:${env.BUILD_ID}").push()
-                        docker.image("abhaytomar2004/immunizationtracker:latest").push()
+                        docker.image("abhaytomar2004/immunizationtracker:${env.BUILD_ID}").push("latest")
                     }
                 }
             }
         }
+        
         stage('Deploy to Kubernetes') {
             steps {
-                dir('ImmunizationTracker') {
-                    bat 'kubectl apply -f k8s/mysql-pv.yaml'
-                    bat 'kubectl apply -f k8s/mysql-deployment.yaml'
-                    bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
-                    bat 'kubectl apply -f k8s/deployment.yaml'
-                    bat 'kubectl apply -f k8s/service.yaml'
-                }
+                bat 'kubectl apply -f k8s/mysql-pv.yaml'
+                bat 'kubectl apply -f k8s/mysql-deployment.yaml'
+                bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
+                bat 'kubectl apply -f k8s/deployment.yaml'
+                bat 'kubectl apply -f k8s/service.yaml'
             }
         }
     }
