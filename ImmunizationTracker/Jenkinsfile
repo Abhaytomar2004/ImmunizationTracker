@@ -10,7 +10,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git'
+                git branch: 'JAV-01', url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git'
             }
         }
         stage('Build') {
