@@ -2,7 +2,7 @@ pipeline {
     agent any
     tools {
         maven 'Maven 3.9.9'
-            jdk 'JDK-21'
+        jdk 'JDK-21'
     }
     environment {
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
@@ -27,29 +27,28 @@ pipeline {
                 }
             }
         }
-      stage('Build Docker Image') {
-    steps {
-        dir('ImmunizationTracker') {
-            script {
-                // Build Docker image from Dockerfile inside ImmunizationTracker directory
-                def image = docker.build("abhaytomar2004/immunizationtracker:${env.BUILD_ID}", ".")
-                // Save the image for pushing in next stage using environment variable or stash
-                env.IMAGE_NAME = image.imageName()
+        stage('Build Docker Image') {
+            steps {
+                dir('ImmunizationTracker') {
+                    script {
+                        // Build Docker image with your Docker Hub username
+                        def image = docker.build("arnold21/immunizationtracker:${env.BUILD_ID}", ".")
+                        // Store image name in environment variable for later stages
+                        env.IMAGE_NAME = image.imageName()
+                    }
+                }
             }
         }
-    }
-}
-
-stage('Push Docker Image') {
-    steps {
-        script {
-            docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
-                def image = docker.image(env.IMAGE_NAME)
-                image.push()
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
+                        def image = docker.image(env.IMAGE_NAME)
+                        image.push()
+                    }
+                }
             }
         }
-    }
-}
         stage('Deploy to Kubernetes') {
             steps {
                 dir('ImmunizationTracker') {
