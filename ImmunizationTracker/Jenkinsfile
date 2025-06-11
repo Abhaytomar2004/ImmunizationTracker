@@ -7,7 +7,7 @@ pipeline {
     environment {
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
         KUBECONFIG = "C:\\Users\\YourUser\\.kube\\config"
-    MINIKUBE_HOME = "C:\\minikube"
+        MINIKUBE_HOME = "C:\\minikube"
     }
     stages {
         stage('Checkout') {
@@ -25,7 +25,7 @@ pipeline {
         stage('Test') {
             steps {
                 dir('ImmunizationTracker') {
-                    bat 'mvn test -DskipTests' // Contradictory flag - needs removal
+                    bat 'mvn test' // Remove -DskipTests to actually run tests
                 }
             }
         }
@@ -58,31 +58,26 @@ pipeline {
                 }
             }
         }
-      stage('Deploy to Kubernetes') {
-    steps {
-        dir('ImmunizationTracker') {
-            script {
-                bat 'kubectl apply -f k8s/mysql-pv.yaml --validate=false'  // ← Updated
-                bat 'kubectl apply -f k8s/mysql-deployment.yaml --validate=false'
-                bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
-                bat 'kubectl apply -f k8s/deployment.yaml --validate=false'
-                bat 'kubectl apply -f k8s/service.yaml --validate=false'
-            }
-        }
-    }
-}
-                        
+        stage('Deploy to Kubernetes') {
+            steps {
+                dir('ImmunizationTracker') {
+                    script {
+                        bat 'kubectl apply -f k8s/mysql-pv.yaml --validate=false'
+                        bat 'kubectl apply -f k8s/mysql-deployment.yaml --validate=false'
+                        // Retry logic for MySQL pod readiness
                         retry(3) {
                             bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
                         }
-                    }  // Added missing script block closure
+                        bat 'kubectl apply -f k8s/deployment.yaml --validate=false'
+                        bat 'kubectl apply -f k8s/service.yaml --validate=false'
+                    }
                 }
             }
-        }  // Corrected stage closure
-    }  // Properly closed stages block
+        }
+    }
     post {
         always {
             cleanWs()
         }
     }
-}  // Final pipeline closure
+}
