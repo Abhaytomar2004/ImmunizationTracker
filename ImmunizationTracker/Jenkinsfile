@@ -62,7 +62,7 @@ pipeline {
                       --embed-certs
                     '''
                     bat 'minikube update-context'
-                    bat 'copy /Y %USERPROFILE%\\.kube\\config %MINIKUBE_HOME%\\config'
+                 bat 'copy /Y "%USERPROFILE%\\.kube\\config" "%MINIKUBE_HOME%\\config"'
                     bat 'kubectl cluster-info'
                     bat 'kubectl get nodes'
                 }
