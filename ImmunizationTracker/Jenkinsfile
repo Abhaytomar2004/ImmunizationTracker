@@ -5,12 +5,10 @@ pipeline {
         jdk 'JDK-21'
     }
     environment {
-    DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
-    // Fix paths for Windows Jenkins
-    KUBECONFIG = "${env.MINIKUBE_HOME}\\config"
-    MINIKUBE_HOME = "C:\\minikube".replace('\\', '/')
-
-}
+        DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
+        KUBECONFIG = "${env.MINIKUBE_HOME}\\config"
+        MINIKUBE_HOME = "C:\\minikube".replace('\\', '/')
+    }
     stages {
         stage('Checkout') {
             steps {
@@ -27,7 +25,7 @@ pipeline {
         stage('Test') {
             steps {
                 dir('ImmunizationTracker') {
-                    bat 'mvn test -DskipTests' // Remove -DskipTests to actually run tests
+                    bat 'mvn test' // Removed -DskipTests to actually run tests
                 }
             }
         }
@@ -50,61 +48,49 @@ pipeline {
                 }
             }
         }
-      stage('Verify Kubernetes Cluster') {
-    steps {
-        script {
-            // Completely reset Minikube
-            bat 'minikube delete --all --purge || echo "No existing cluster to delete"'
-            
-            // Start fresh cluster with explicit config
-            bat '''
-            minikube start \
-              --driver=docker \
-              --cpus=2 \
-              --memory=4096 \
-              --alsologtostderr \
-              --force \
-              --embed-certs
-            '''
-            
-            // Generate and load kubeconfig
-            bat 'minikube update-context'
-            bat 'copy /Y %USERPROFILE%\\.kube\\config %MINIKUBE_HOME%\\config'
-            
-            // Verify access
-            bat 'kubectl cluster-info'
-            bat 'kubectl get nodes'
-        }
-    }
-}
-      stage('Deploy to Kubernetes') {
-    steps {
-        dir('ImmunizationTracker') {
-            script {
-                // Load Minikube environment explicitly
-                bat 'minikube docker-env --shell cmd > minikube-env.cmd'
-                bat 'call minikube-env.cmd'
-                
-                // Apply manifests with validation disabled
-                def k8sFiles = [
-                    'mysql-pv.yaml',
-                    'mysql-deployment.yaml',
-                    'deployment.yaml',
-                    'service.yaml'
-                ]
-                
-                k8sFiles.each { file ->
-                    bat "kubectl apply -f k8s/${file} --validate=false || echo \"Failed ${file}\""
+        stage('Verify Kubernetes Cluster') {
+            steps {
+                script {
+                    bat 'minikube delete --all --purge || echo "No existing cluster to delete"'
+                    bat '''
+                    minikube start ^
+                      --driver=docker ^
+                      --cpus=2 ^
+                      --memory=4096 ^
+                      --alsologtostderr ^
+                      --force ^
+                      --embed-certs
+                    '''
+                    bat 'minikube update-context'
+                    bat 'copy /Y %USERPROFILE%\\.kube\\config %MINIKUBE_HOME%\\config'
+                    bat 'kubectl cluster-info'
+                    bat 'kubectl get nodes'
                 }
-                
-                // Extended wait for MySQL
-                retry(5) {
-                    bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=300s'
+            }
+        }
+        stage('Deploy to Kubernetes') {
+            steps {
+                dir('ImmunizationTracker') {
+                    script {
+                        bat 'minikube docker-env --shell cmd > minikube-env.cmd'
+                        bat 'call minikube-env.cmd'
+                        def k8sFiles = [
+                            'mysql-pv.yaml',
+                            'mysql-deployment.yaml',
+                            'deployment.yaml',
+                            'service.yaml'
+                        ]
+                        k8sFiles.each { file ->
+                            bat "kubectl apply -f k8s/${file} --validate=false || echo \"Failed ${file}\""
+                        }
+                        retry(5) {
+                            bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=300s'
+                        }
+                    }
                 }
             }
         }
     }
-}
     post {
         always {
             cleanWs()
