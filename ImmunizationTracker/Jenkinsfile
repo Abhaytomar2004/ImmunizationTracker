@@ -4,11 +4,11 @@ pipeline {
         maven 'Maven 3.9.9'
         jdk 'JDK-21'
     }
-    environment {
-        DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
-        // Point to Minikube's Docker daemon
-        DOCKER_HOST = 'tcp://127.0.0.1:2375'
-    }
+   environment {
+    DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
+    // Use this instead of hardcoded port:
+    DOCKER_HOST = 'npipe:////./pipe/docker_engine'  // For Windows named pipe
+}
     stages {
         stage('Setup Minikube Environment') {
             steps {
