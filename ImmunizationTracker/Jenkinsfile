@@ -48,16 +48,33 @@ pipeline {
                 }
             }
         }
-        stage('Verify Kubernetes Cluster') {
-            steps {
-                script {
-                    bat 'kubectl config view'
-                    bat 'kubectl cluster-info || minikube status'
-                    bat 'minikube status || minikube start'
-                    bat 'minikube update-context'
-                }
-            }
+      stage('Verify Kubernetes Cluster') {
+    steps {
+        script {
+            // Completely reset Minikube
+            bat 'minikube delete --all --purge || echo "No existing cluster to delete"'
+            
+            // Start fresh cluster with explicit config
+            bat '''
+            minikube start \
+              --driver=docker \
+              --cpus=2 \
+              --memory=4096 \
+              --alsologtostderr \
+              --force \
+              --embed-certs
+            '''
+            
+            // Generate and load kubeconfig
+            bat 'minikube update-context'
+            bat 'copy /Y %USERPROFILE%\\.kube\\config %MINIKUBE_HOME%\\config'
+            
+            // Verify access
+            bat 'kubectl cluster-info'
+            bat 'kubectl get nodes'
         }
+    }
+}
         stage('Deploy to Kubernetes') {
             steps {
                 dir('ImmunizationTracker') {
