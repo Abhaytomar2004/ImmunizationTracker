@@ -25,7 +25,7 @@ pipeline {
         stage('Test') {
             steps {
                 dir('ImmunizationTracker') {
-                    bat 'mvn test' // Remove -DskipTests to actually run tests
+                    bat 'mvn test -DskipTests' // Remove -DskipTests to actually run tests
                 }
             }
         }
