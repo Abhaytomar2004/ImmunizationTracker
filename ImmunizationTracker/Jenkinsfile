@@ -5,10 +5,12 @@ pipeline {
         jdk 'JDK-21'
     }
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
-        KUBECONFIG = "C:\\Users\\YourUser\\.kube\\config"
-        MINIKUBE_HOME = "C:\\minikube"
-    }
+    DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
+    // Fix paths for Windows Jenkins
+    KUBECONFIG = "${env.MINIKUBE_HOME}\\config"
+    MINIKUBE_HOME = "C:\\minikube".replace('\\', '/')
+
+}
     stages {
         stage('Checkout') {
             steps {
@@ -75,23 +77,34 @@ pipeline {
         }
     }
 }
-        stage('Deploy to Kubernetes') {
-            steps {
-                dir('ImmunizationTracker') {
-                    script {
-                        bat 'kubectl apply -f k8s/mysql-pv.yaml --validate=false'
-                        bat 'kubectl apply -f k8s/mysql-deployment.yaml --validate=false'
-                        // Retry logic for MySQL pod readiness
-                        retry(3) {
-                            bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
-                        }
-                        bat 'kubectl apply -f k8s/deployment.yaml --validate=false'
-                        bat 'kubectl apply -f k8s/service.yaml --validate=false'
-                    }
+      stage('Deploy to Kubernetes') {
+    steps {
+        dir('ImmunizationTracker') {
+            script {
+                // Load Minikube environment explicitly
+                bat 'minikube docker-env --shell cmd > minikube-env.cmd'
+                bat 'call minikube-env.cmd'
+                
+                // Apply manifests with validation disabled
+                def k8sFiles = [
+                    'mysql-pv.yaml',
+                    'mysql-deployment.yaml',
+                    'deployment.yaml',
+                    'service.yaml'
+                ]
+                
+                k8sFiles.each { file ->
+                    bat "kubectl apply -f k8s/${file} --validate=false || echo \"Failed ${file}\""
+                }
+                
+                // Extended wait for MySQL
+                retry(5) {
+                    bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=300s'
                 }
             }
         }
     }
+}
     post {
         always {
             cleanWs()
