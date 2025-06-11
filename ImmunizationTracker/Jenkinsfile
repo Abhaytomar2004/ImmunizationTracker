@@ -6,6 +6,8 @@ pipeline {
     }
     environment {
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
+        KUBECONFIG = "C:\\Users\\YourUser\\.kube\\config"
+    MINIKUBE_HOME = "C:\\minikube"
     }
     stages {
         stage('Checkout') {
@@ -56,28 +58,19 @@ pipeline {
                 }
             }
         }
-        stage('Deploy to Kubernetes') {
-            steps {
-                dir('ImmunizationTracker') {
-                    script {
-                        bat 'kubectl cluster-info'
-                        def files = [
-                            'k8s/mysql-pv.yaml',
-                            'k8s/mysql-deployment.yaml', 
-                            'k8s/deployment.yaml',
-                            'k8s/service.yaml'
-                        ]
-                        
-                        files.each { file ->
-                            if (fileExists(file)) {
-                                try {
-                                    bat "kubectl apply -f ${file}"
-                                } catch (e) {
-                                    bat "kubectl apply -f ${file} --validate=false"
-                                    echo "Applied ${file} with validation disabled"
-                                }
-                            }
-                        }
+      stage('Deploy to Kubernetes') {
+    steps {
+        dir('ImmunizationTracker') {
+            script {
+                bat 'kubectl apply -f k8s/mysql-pv.yaml --validate=false'  // ← Updated
+                bat 'kubectl apply -f k8s/mysql-deployment.yaml --validate=false'
+                bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
+                bat 'kubectl apply -f k8s/deployment.yaml --validate=false'
+                bat 'kubectl apply -f k8s/service.yaml --validate=false'
+            }
+        }
+    }
+}
                         
                         retry(3) {
                             bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
