@@ -56,7 +56,7 @@ pipeline {
                     minikube start ^
                       --driver=docker ^
                       --cpus=2 ^
-                      --memory=4096 ^
+                      --memory=3759 ^
                       --alsologtostderr ^
                       --force ^
                       --embed-certs
