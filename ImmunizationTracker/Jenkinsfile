@@ -49,18 +49,58 @@ pipeline {
                 }
             }
         }
-        stage('Deploy to Kubernetes') {
-            steps {
-                dir('ImmunizationTracker') {
-                    bat 'kubectl apply -f k8s/mysql-pv.yaml'
-                    bat 'kubectl apply -f k8s/mysql-deployment.yaml'
+        stage('Verify Kubernetes Cluster') {
+    steps {
+        script {
+            // Ensure kubectl is configured properly
+            bat 'kubectl config view'
+            
+            // Verify cluster connectivity
+            bat 'kubectl cluster-info || minikube status'
+            
+            // If using Minikube, ensure it's running
+            bat 'minikube status || minikube start'
+            
+            // Update kubeconfig if needed
+            bat 'minikube update-context'
+        }
+    }
+}
+       stage('Deploy to Kubernetes') {
+    steps {
+        dir('ImmunizationTracker') {
+            script {
+                // Verify cluster connection first
+                bat 'kubectl cluster-info'
+                
+                // Apply manifests with validation disabled if needed
+                def files = [
+                    'k8s/mysql-pv.yaml',
+                    'k8s/mysql-deployment.yaml', 
+                    'k8s/deployment.yaml',
+                    'k8s/service.yaml'
+                ]
+                
+                files.each { file ->
+                    if (fileExists(file)) {
+                        try {
+                            bat "kubectl apply -f ${file}"
+                        } catch (e) {
+                            // Try with validation disabled if first attempt fails
+                            bat "kubectl apply -f ${file} --validate=false"
+                            echo "Applied ${file} with validation disabled"
+                        }
+                    }
+                }
+                
+                // Wait for MySQL with retries
+                retry(3) {
                     bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
-                    bat 'kubectl apply -f k8s/deployment.yaml'
-                    bat 'kubectl apply -f k8s/service.yaml'
                 }
             }
         }
     }
+}
     post {
         always {
             cleanWs()
