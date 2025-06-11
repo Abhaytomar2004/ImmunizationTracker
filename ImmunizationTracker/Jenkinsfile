@@ -23,7 +23,7 @@ pipeline {
         stage('Test') {
             steps {
                 dir('ImmunizationTracker') {
-                    bat 'mvn test -DskipTests'
+                    bat 'mvn test -DskipTests' // Contradictory flag - needs removal
                 }
             }
         }
@@ -31,9 +31,7 @@ pipeline {
             steps {
                 dir('ImmunizationTracker') {
                     script {
-                        // Build Docker image with your Docker Hub username
                         def image = docker.build("arnold21/immunizationtracker:${env.BUILD_ID}", ".")
-                        // Store image name in environment variable for later stages
                         env.IMAGE_NAME = image.imageName()
                     }
                 }
@@ -43,67 +41,55 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
-                        def image = docker.image(env.IMAGE_NAME)
-                        image.push()
+                        docker.image(env.IMAGE_NAME).push()
                     }
                 }
             }
         }
         stage('Verify Kubernetes Cluster') {
-    steps {
-        script {
-            // Ensure kubectl is configured properly
-            bat 'kubectl config view'
-            
-            // Verify cluster connectivity
-            bat 'kubectl cluster-info || minikube status'
-            
-            // If using Minikube, ensure it's running
-            bat 'minikube status || minikube start'
-            
-            // Update kubeconfig if needed
-            bat 'minikube update-context'
-        }
-    }
-}
-       stage('Deploy to Kubernetes') {
-    steps {
-        dir('ImmunizationTracker') {
-            script {
-                // Verify cluster connection first
-                bat 'kubectl cluster-info'
-                
-                // Apply manifests with validation disabled if needed
-                def files = [
-                    'k8s/mysql-pv.yaml',
-                    'k8s/mysql-deployment.yaml', 
-                    'k8s/deployment.yaml',
-                    'k8s/service.yaml'
-                ]
-                
-                files.each { file ->
-                    if (fileExists(file)) {
-                        try {
-                            bat "kubectl apply -f ${file}"
-                        } catch (e) {
-                            // Try with validation disabled if first attempt fails
-                            bat "kubectl apply -f ${file} --validate=false"
-                            echo "Applied ${file} with validation disabled"
-                        }
-                    }
-                }
-                
-                // Wait for MySQL with retries
-                retry(3) {
-                    bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
+            steps {
+                script {
+                    bat 'kubectl config view'
+                    bat 'kubectl cluster-info || minikube status'
+                    bat 'minikube status || minikube start'
+                    bat 'minikube update-context'
                 }
             }
         }
-    }
-}
+        stage('Deploy to Kubernetes') {
+            steps {
+                dir('ImmunizationTracker') {
+                    script {
+                        bat 'kubectl cluster-info'
+                        def files = [
+                            'k8s/mysql-pv.yaml',
+                            'k8s/mysql-deployment.yaml', 
+                            'k8s/deployment.yaml',
+                            'k8s/service.yaml'
+                        ]
+                        
+                        files.each { file ->
+                            if (fileExists(file)) {
+                                try {
+                                    bat "kubectl apply -f ${file}"
+                                } catch (e) {
+                                    bat "kubectl apply -f ${file} --validate=false"
+                                    echo "Applied ${file} with validation disabled"
+                                }
+                            }
+                        }
+                        
+                        retry(3) {
+                            bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=120s'
+                        }
+                    }  // Added missing script block closure
+                }
+            }
+        }  // Corrected stage closure
+    }  // Properly closed stages block
     post {
         always {
             cleanWs()
         }
     }
-}
+}  // Final pipeline closure
