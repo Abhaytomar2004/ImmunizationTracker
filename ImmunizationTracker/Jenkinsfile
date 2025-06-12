@@ -6,8 +6,8 @@ pipeline {
     }
     environment {
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
-        KUBECONFIG = "${env.MINIKUBE_HOME}\\config"
-        MINIKUBE_HOME = "C:\\minikube".replace('\\', '/')
+        MINIKUBE_HOME = 'C:/minikube'
+        KUBECONFIG = "${env.MINIKUBE_HOME.replace('\\','/')}/config"
     }
     stages {
         stage('Checkout') {
@@ -22,18 +22,11 @@ pipeline {
                 }
             }
         }
-        stage('Test') {
-            steps {
-                dir('ImmunizationTracker') {
-                    bat 'mvn test -DskipTests' 
-                }
-            }
-        }
         stage('Build Docker Image') {
             steps {
                 dir('ImmunizationTracker') {
                     script {
-                        def image = docker.build("arnold21/immunizationtracker:${env.BUILD_ID}", ".")
+                        def image = docker.build("arnold21/immunizationtracker:${env.BUILD_ID}")
                         env.IMAGE_NAME = image.imageName()
                     }
                 }
@@ -42,60 +35,32 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
+                    docker.withRegistry('https://index.docker.io/v1/', env.DOCKERHUB_CREDENTIALS) {
                         docker.image(env.IMAGE_NAME).push()
                     }
                 }
             }
         }
-        stage('Verify Kubernetes Cluster') {
+        stage('Start Minikube') {
             steps {
                 script {
-                        bat 'minikube delete --all --purge || echo "No existing cluster to delete"'
-            bat '''
-            minikube start ^
-              --driver=docker ^
-              --cpus=2 ^
-              --memory=3759 ^
-              --alsologtostderr ^
-              --force ^
-              --embed-certs
-            '''
-            bat 'minikube update-context'
-            bat 'copy /Y "%USERPROFILE%\\.kube\\config" "%MINIKUBE_HOME%\\config"'
-            
-            // Get Minikube IP and update config
-            bat 'minikube ip > minikube_ip.txt'
-            bat 'set /p MINIKUBE_IP=<minikube_ip.txt'
-            bat 'kubectl config set-cluster minikube --server=https://%MINIKUBE_IP%:8443 --insecure-skip-tls-verify=true'
-            
-            // Wait for cluster to be ready (fixed timeout syntax)
-            bat 'timeout /T 60 /NOBREAK && kubectl get nodes --request-timeout=30s || echo "Cluster not ready yet"'
-            
-            // Verify cluster access
-            bat 'kubectl cluster-info'
-            bat 'kubectl get nodes'
+                    bat 'minikube stop || echo "No cluster to stop"'
+                    bat 'minikube delete || echo "No cluster to delete"'
+                    bat 'minikube start --driver=docker --cpus=2 --memory=4096'
+                    bat 'minikube update-context'
                 }
             }
         }
         stage('Deploy to Kubernetes') {
             steps {
-                dir('ImmunizationTracker') {
+                dir('ImmunizationTracker/k8s') {
                     script {
-                        bat 'minikube docker-env --shell cmd > minikube-env.cmd'
-                        bat 'call minikube-env.cmd'
-                        def k8sFiles = [
-                            'mysql-pv.yaml',
-                            'mysql-deployment.yaml',
-                            'deployment.yaml',
-                            'service.yaml'
-                        ]
-                        k8sFiles.each { file ->
-                            bat "kubectl apply -f k8s/${file} --validate=false || echo \"Failed ${file}\""
-                        }
-                        retry(5) {
-                            bat 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=300s'
-                        }
+                        bat 'kubectl apply -f mysql-pv.yaml'
+                        bat 'kubectl apply -f mysql-deployment.yaml'
+                        bat 'kubectl apply -f deployment.yaml'
+                        bat 'kubectl apply -f service.yaml'
+                        bat 'kubectl rollout status deployment/mysql --timeout=300s'
+                        bat 'kubectl rollout status deployment/immunization-tracker --timeout=300s'
                     }
                 }
             }

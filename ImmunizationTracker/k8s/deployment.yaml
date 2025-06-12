@@ -16,19 +16,19 @@ spec:
     spec:
       containers:
       - name: immunization-tracker
-        image: abhaytomar2004/immunizationtracker:latest  
+        image: arnold21/immunizationtracker:latest
         imagePullPolicy: Always
         ports:
-        - containerPort: 8081  
+        - containerPort: 8081
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "prod"
         - name: SPRING_DATASOURCE_URL
-          value: "jdbc:mysql://mysql-service:3306/lol3" 
+          value: "jdbc:mysql://mysql-service:3306/lol3?createTableIfNotExists=true"
         - name: SPRING_DATASOURCE_USERNAME
           value: "root"
         - name: SPRING_DATASOURCE_PASSWORD
-          value: "password"
+          value: "Anjana@3176"
         resources:
           limits:
             memory: "512Mi"
