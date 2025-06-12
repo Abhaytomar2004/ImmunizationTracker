@@ -46,30 +46,31 @@ pipeline {
         stage('Start Minikube') {
             steps {
                 script {
-                bat '''
-                        @echo off
-                        minikube status > nul 2>&1 && (
-                            echo Found existing cluster, deleting...
-                            minikube delete
-                        ) || (
-                            echo No existing cluster found
-                        )
-                    '''
-                    
-                    // Start cluster with explicit path configuration
-                    bat """
-                        minikube start --driver=docker --cpus=2 --memory=3759 ^
-                        --alsologtostderr -v=3 ^
-                        --kubernetes-version=v1.33.1 ^
-                        --kubeconfig="${env.KUBECONFIG}"
-                    """
-                    
-                    // Verify cluster with retries
-                    bat """
-                        minikube status
-                        kubectl cluster-info
-                        kubectl get nodes
-                    """
+                 bat '''
+                @echo off
+                minikube status > nul 2>&1 && (
+                    echo Found existing cluster, deleting...
+                    minikube delete
+                ) || (
+                    echo No existing cluster found
+                )
+            '''
+            
+            // Start cluster with more conservative settings
+            bat """
+                minikube start --driver=docker --cpus=2 --memory=2500 ^
+                --kubernetes-version=v1.28.0 ^
+                --kubeconfig="${env.KUBECONFIG}"
+            """
+            
+            // Add verification with retries
+            retry(3) {
+                bat """
+                    minikube status
+                    kubectl cluster-info
+                    kubectl get nodes
+                """
+
                 }
             }
         }
