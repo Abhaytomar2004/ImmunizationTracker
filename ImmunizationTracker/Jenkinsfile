@@ -47,7 +47,7 @@ pipeline {
                 script {
                     bat 'minikube stop || echo "No cluster to stop"'
                     bat 'minikube delete || echo "No cluster to delete"'
-                    bat 'minikube start --driver=docker --cpus=2 --memory=4096'
+                    bat 'minikube start --driver=docker --cpus=2 --memory=3759'
                     bat 'minikube update-context'
                 }
             }
