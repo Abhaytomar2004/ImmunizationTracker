@@ -37,40 +37,39 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
-                   docker.image(env.IMAGE_NAME).push()
+                        docker.image(env.IMAGE_NAME).push()
                     }
                 }
             }
         }
-        // ---- Kubernetes Steps Start Here (fixed and simplified) ----
         stage('Start Minikube') {
             steps {
                 script {
-                 bat '''
-                @echo off
-                minikube status > nul 2>&1 && (
-                    echo Found existing cluster, deleting...
-                    minikube delete
-                ) || (
-                    echo No existing cluster found
-                )
-            '''
+                    bat '''
+                        @echo off
+                        minikube status > nul 2>&1 && (
+                            echo Found existing cluster, deleting...
+                            minikube delete
+                        ) || (
+                            echo No existing cluster found
+                        )
+                    '''
             
-            // Start cluster with more conservative settings
-            bat """
-                minikube start --driver=docker --cpus=2 --memory=2500 ^
-                --kubernetes-version=v1.28.0 ^
-                --kubeconfig="${env.KUBECONFIG}"
-            """
+                    // Start cluster with more conservative settings
+                    bat """
+                        minikube start --driver=docker --cpus=2 --memory=2500 ^
+                        --kubernetes-version=v1.28.0 ^
+                        --kubeconfig="${env.KUBECONFIG}"
+                    """
             
-            // Add verification with retries
-            retry(3) {
-                bat """
-                    minikube status
-                    kubectl cluster-info
-                    kubectl get nodes
-                """
-
+                    // Add verification with retries
+                    retry(3) {
+                        bat """
+                            minikube status
+                            kubectl cluster-info
+                            kubectl get nodes
+                        """
+                    }
                 }
             }
         }
@@ -78,25 +77,25 @@ pipeline {
             steps {
                 dir('ImmunizationTracker/k8s') {
                     script {
-                          bat '''
-                cd ImmunizationTracker/k8s
-                dir /b
-                echo Content of mysql-pv.yaml:
-                type mysql-pv.yaml
-            '''
+                        bat '''
+                            cd ImmunizationTracker/k8s
+                            dir /b
+                            echo Content of mysql-pv.yaml:
+                            type mysql-pv.yaml
+                        '''
             
-            // 2. Apply Kubernetes manifests with debug info
-            bat '''
-                kubectl apply -f ImmunizationTracker/k8s/mysql-pv.yaml
-                kubectl apply -f ImmunizationTracker/k8s/mysql-deployment.yaml
-                kubectl wait --for=condition=available deployment/mysql --timeout=300s
-                
-                kubectl apply -f ImmunizationTracker/k8s/deployment.yaml
-                kubectl apply -f ImmunizationTracker/k8s/service.yaml
-                kubectl rollout status deployment/immunization-tracker --timeout=300s
-                
-                minikube service immunization-tracker --url
-            '''
+                        // Apply Kubernetes manifests with debug info
+                        bat '''
+                            kubectl apply -f ImmunizationTracker/k8s/mysql-pv.yaml
+                            kubectl apply -f ImmunizationTracker/k8s/mysql-deployment.yaml
+                            kubectl wait --for=condition=available deployment/mysql --timeout=300s
+                            
+                            kubectl apply -f ImmunizationTracker/k8s/deployment.yaml
+                            kubectl apply -f ImmunizationTracker/k8s/service.yaml
+                            kubectl rollout status deployment/immunization-tracker --timeout=300s
+                            
+                            minikube service immunization-tracker --url
+                        '''
                     }
                 }
             }
