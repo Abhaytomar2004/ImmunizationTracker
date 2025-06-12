@@ -11,6 +11,87 @@ pipeline {
         DOCKER_CONFIG = 'C:\\Users\\abhay tomar\\.docker'
     }
     stages {
+         stage('Check Jenkins User Context') {
+            steps {
+                bat '''
+                    echo === JENKINS USER CONTEXT CHECK ===
+                    
+                    echo Current User:
+                    whoami
+                    
+                    echo User Groups:
+                    whoami /groups
+                    
+                    echo User Privileges:
+                    whoami /priv
+                    
+                    echo Environment Variables:
+                    echo USERPROFILE: %USERPROFILE%
+                    echo USERNAME: %USERNAME%
+                    echo TEMP: %TEMP%
+                    echo APPDATA: %APPDATA%
+                    
+                    echo PATH: %PATH%
+                '''
+            }
+        }
+        stage('Check Docker Access from Jenkins') {
+            steps {
+                bat '''
+                    echo === DOCKER ACCESS CHECK ===
+                    
+                    echo Docker Version:
+                    docker --version || echo "Docker command failed"
+                    
+                    echo Docker Info:
+                    docker info || echo "Docker info failed"
+                    
+                    echo Docker PS:
+                    docker ps || echo "Docker ps failed"
+                    
+                    echo Docker System Info:
+                    docker system info --format "Server Version: {{.ServerVersion}}" || echo "Docker system info failed"
+                '''
+            }
+        }
+        stage('Check Minikube Access from Jenkins') {
+            steps {
+                bat '''
+                    echo === MINIKUBE ACCESS CHECK ===
+                    
+                    echo Minikube Version:
+                    minikube version || echo "Minikube command failed"
+                    
+                    echo Minikube Config Location:
+                    echo Expected: %USERPROFILE%\\.minikube
+                    dir "%USERPROFILE%\\.minikube" 2>nul || echo "Minikube config directory not found"
+                    
+                    echo Minikube Status:
+                    minikube status || echo "No minikube cluster running"
+                    
+                    echo Minikube Profile List:
+                    minikube profile list || echo "No minikube profiles found"
+                '''
+            }
+        }
+        stage('Check File Permissions') {
+            steps {
+                bat '''
+                    echo === FILE PERMISSIONS CHECK ===
+                    
+                    echo Testing write access to user profile:
+                    echo test > "%USERPROFILE%\\jenkins_test.txt" && (
+                        echo SUCCESS: Can write to user profile
+                        del "%USERPROFILE%\\jenkins_test.txt"
+                    ) || echo FAILED: Cannot write to user profile
+                    
+                    echo Testing Docker socket access:
+                    echo. | docker version --format "{{.Server.Version}}" >nul 2>&1 && (
+                        echo SUCCESS: Can access Docker daemon
+                    ) || echo FAILED: Cannot access Docker daemon
+                '''
+            }
+        }
         stage('Checkout') {
             steps {
                 git branch: 'JAV-01', url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git'
