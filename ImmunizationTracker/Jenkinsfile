@@ -8,6 +8,7 @@ pipeline {
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
         MINIKUBE_HOME = 'C:\\minikube'  
         KUBECONFIG = "${env.MINIKUBE_HOME}\\config"
+        DOCKER_CONFIG = 'C:\\Users\\abhay tomar\\.docker'
     }
     stages {
         stage('Checkout') {
