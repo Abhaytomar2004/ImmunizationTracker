@@ -41,6 +41,7 @@ pipeline {
                 }
             }
         }
+        // ---- Kubernetes Steps Start Here (fixed and simplified) ----
         stage('Start Minikube') {
             steps {
                 script {
