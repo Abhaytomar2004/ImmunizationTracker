@@ -7,7 +7,6 @@ pipeline {
     environment {
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
         MINIKUBE_HOME = 'C:\\minikube'  
-        KUBECONFIG = "${env.MINIKUBE_HOME}\\config"
         DOCKER_CONFIG = 'C:\\Users\\abhay tomar\\.docker'
     }
     stages {
@@ -144,13 +143,18 @@ pipeline {
                         echo "Cluster cleanup completed: ${e.getMessage()}"
                     }
             
-                    // Start cluster with more conservative settings
+                    // Start cluster - REMOVED --kubeconfig flag
                     bat """
                         echo Starting new minikube cluster...
                         minikube start --driver=docker --cpus=2 --memory=2500 ^
                         --kubernetes-version=v1.28.0 ^
-                        --kubeconfig="${env.KUBECONFIG}" ^
                         --force
+                    """
+            
+                    // Set kubectl context to use minikube
+                    bat """
+                        echo Setting kubectl context...
+                        kubectl config use-context minikube
                     """
             
                     // Add verification with retries
@@ -168,62 +172,80 @@ pipeline {
         
         stage('Deploy to Kubernetes') {
             steps {
-                dir('ImmunizationTracker/k8s') {
-                    script {
-                        // Debug: Check what files are available
-                        bat '''
-                            echo Current directory:
-                            cd
-                            echo Files in current directory:
-                            dir /b
-                            
-                            echo Checking for k8s directory:
-                            if exist "k8s" (
-                                echo k8s directory found
-                                dir k8s /b
-                            ) else (
-                                echo k8s directory not found, checking parent directories
-                                cd ..
-                                dir /b | findstr k8s
+                script {
+                    // First, check current directory and look for k8s files
+                    bat '''
+                        echo Current directory:
+                        cd
+                        echo Files in current directory:
+                        dir /b
+                        
+                        echo Checking for k8s directory:
+                        if exist "ImmunizationTracker\\k8s" (
+                            echo k8s directory found in ImmunizationTracker
+                            dir "ImmunizationTracker\\k8s" /b
+                        ) else if exist "k8s" (
+                            echo k8s directory found in current directory  
+                            dir k8s /b
+                        ) else (
+                            echo k8s directory not found, listing all yaml files
+                            dir *.yaml /s /b
+                        )
+                    '''
+        
+                    // Apply Kubernetes manifests with proper path handling
+                    bat '''
+                        echo Applying Kubernetes manifests...
+                        
+                        REM Set the correct path for k8s files
+                        if exist "ImmunizationTracker\\k8s" (
+                            set K8S_PATH=ImmunizationTracker\\k8s
+                        ) else if exist "k8s" (
+                            set K8S_PATH=k8s
+                        ) else (
+                            echo No k8s directory found, creating basic deployment
+                            goto :create_basic_deployment
+                        )
+                        
+                        REM Apply MySQL PV if exists
+                        if exist "%K8S_PATH%\\mysql-pv.yaml" (
+                            echo Applying MySQL PV...
+                            kubectl apply -f "%K8S_PATH%\\mysql-pv.yaml"
+                        )
+                        
+                        REM Apply MySQL deployment if exists
+                        if exist "%K8S_PATH%\\mysql-deployment.yaml" (
+                            echo Applying MySQL deployment...
+                            kubectl apply -f "%K8S_PATH%\\mysql-deployment.yaml"
+                            echo Waiting for MySQL deployment...
+                            kubectl wait --for=condition=available deployment/mysql --timeout=300s
+                        )
+                        
+                        REM Apply application deployment if exists
+                        if exist "%K8S_PATH%\\deployment.yaml" (
+                            echo Applying application deployment...
+                            kubectl apply -f "%K8S_PATH%\\deployment.yaml"
+                            if exist "%K8S_PATH%\\service.yaml" (
+                                kubectl apply -f "%K8S_PATH%\\service.yaml"
                             )
-                        '''
-            
-                        // Apply Kubernetes manifests - adjust path as needed
-                        bat '''
-                            echo Applying Kubernetes manifests...
-                            
-                            if exist "mysql-pv.yaml" (
-                                kubectl apply -f mysql-pv.yaml
-                            ) else if exist "k8s\\mysql-pv.yaml" (
-                                kubectl apply -f k8s\\mysql-pv.yaml
-                            ) else (
-                                echo mysql-pv.yaml not found
-                            )
-                            
-                            if exist "mysql-deployment.yaml" (
-                                kubectl apply -f mysql-deployment.yaml
-                                kubectl wait --for=condition=available deployment/mysql --timeout=300s
-                            ) else if exist "k8s\\mysql-deployment.yaml" (
-                                kubectl apply -f k8s\\mysql-deployment.yaml
-                                kubectl wait --for=condition=available deployment/mysql --timeout=300s
-                            ) else (
-                                echo mysql-deployment.yaml not found
-                            )
-                            
-                            if exist "deployment.yaml" (
-                                kubectl apply -f deployment.yaml
-                                kubectl apply -f service.yaml
-                            ) else if exist "k8s\\deployment.yaml" (
-                                kubectl apply -f k8s\\deployment.yaml
-                                kubectl apply -f k8s\\service.yaml
-                            ) else (
-                                echo deployment.yaml not found
-                            )
-                            
-                            kubectl rollout status deployment/immunization-tracker --timeout=300s
-                            minikube service immunization-tracker --url
-                        '''
-                    }
+                        )
+                        
+                        goto :verify_deployment
+                        
+                        :create_basic_deployment
+                        echo Creating basic deployment for immunization tracker...
+                        kubectl create deployment immunization-tracker --image=arnold21/immunizationtracker:%BUILD_ID% --port=8080
+                        kubectl expose deployment immunization-tracker --type=NodePort --port=8080 --target-port=8080
+                        
+                        :verify_deployment
+                        echo Waiting for deployment to be ready...
+                        kubectl wait --for=condition=available deployment/immunization-tracker --timeout=300s
+                        
+                        echo Getting service URL...
+                        minikube service immunization-tracker --url
+                        
+                        echo Deployment completed successfully!
+                    '''
                 }
             }
         }
@@ -231,6 +253,9 @@ pipeline {
     post {
         always {
             cleanWs()
+        }
+        success {
+            echo "Pipeline completed successfully!"
         }
         failure {
             echo "Pipeline failed. Check the logs above for details."
