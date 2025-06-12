@@ -11,92 +11,89 @@ pipeline {
         DOCKER_CONFIG = 'C:\\Users\\abhay tomar\\.docker'
     }
     stages {
-         stage('Check Jenkins User Context') {
+        stage('Check Jenkins User Context') {
             steps {
-                bat '''
-                    echo === JENKINS USER CONTEXT CHECK ===
-                    
-                    echo Current User:
-                    whoami
-                    
-                    echo User Groups:
-                    whoami /groups
-                    
-                    echo User Privileges:
-                    whoami /priv
-                    
-                    echo Environment Variables:
-                    echo USERPROFILE: %USERPROFILE%
-                    echo USERNAME: %USERNAME%
-                    echo TEMP: %TEMP%
-                    echo APPDATA: %APPDATA%
-                    
-                    echo PATH: %PATH%
-                '''
+                script {
+                    try {
+                        bat '''
+                            echo === JENKINS USER CONTEXT CHECK ===
+                            
+                            echo Current User:
+                            whoami
+                            
+                            echo User Groups:
+                            whoami /groups
+                            
+                            echo Environment Variables:
+                            echo USERPROFILE: %USERPROFILE%
+                            echo USERNAME: %USERNAME%
+                            echo PATH: %PATH%
+                        '''
+                    } catch (Exception e) {
+                        echo "User context check failed: ${e.getMessage()}"
+                    }
+                }
             }
         }
+        
         stage('Check Docker Access from Jenkins') {
             steps {
-                bat '''
-                    echo === DOCKER ACCESS CHECK ===
-                    
-                    echo Docker Version:
-                    docker --version || echo "Docker command failed"
-                    
-                    echo Docker Info:
-                    docker info || echo "Docker info failed"
-                    
-                    echo Docker PS:
-                    docker ps || echo "Docker ps failed"
-                    
-                    echo Docker System Info:
-                    docker system info --format "Server Version: {{.ServerVersion}}" || echo "Docker system info failed"
-                '''
+                script {
+                    try {
+                        bat '''
+                            echo === DOCKER ACCESS CHECK ===
+                            
+                            echo Docker Version:
+                            docker --version 2>nul || echo "Docker command failed"
+                            
+                            echo Docker Info:
+                            docker info 2>nul || echo "Docker info failed"
+                            
+                            echo Docker PS:
+                            docker ps 2>nul || echo "Docker ps failed"
+                        '''
+                    } catch (Exception e) {
+                        echo "Docker access check failed: ${e.getMessage()}"
+                    }
+                }
             }
         }
+        
         stage('Check Minikube Access from Jenkins') {
             steps {
-                bat '''
-                    echo === MINIKUBE ACCESS CHECK ===
-                    
-                    echo Minikube Version:
-                    minikube version || echo "Minikube command failed"
-                    
-                    echo Minikube Config Location:
-                    echo Expected: %USERPROFILE%\\.minikube
-                    dir "%USERPROFILE%\\.minikube" 2>nul || echo "Minikube config directory not found"
-                    
-                    echo Minikube Status:
-                    minikube status || echo "No minikube cluster running"
-                    
-                    echo Minikube Profile List:
-                    minikube profile list || echo "No minikube profiles found"
-                '''
+                script {
+                    try {
+                        bat '''
+                            echo === MINIKUBE ACCESS CHECK ===
+                            
+                            echo Minikube Version:
+                            minikube version 2>nul || echo "Minikube command failed"
+                            
+                            echo Minikube Config Location:
+                            echo Expected: %USERPROFILE%\\.minikube
+                            dir "%USERPROFILE%\\.minikube" 2>nul || echo "Minikube config directory not found"
+                            
+                            echo Checking for existing cluster:
+                            minikube status 2>nul || echo "No active minikube cluster"
+                            
+                            echo Checking profiles (this may show an error if no profiles exist - that's normal):
+                            minikube profile list 2>nul || echo "No minikube profiles found - will create one"
+                            
+                            exit 0
+                        '''
+                    } catch (Exception e) {
+                        echo "Minikube access check completed with warnings: ${e.getMessage()}"
+                    }
+                }
             }
         }
-        stage('Check File Permissions') {
-            steps {
-                bat '''
-                    echo === FILE PERMISSIONS CHECK ===
-                    
-                    echo Testing write access to user profile:
-                    echo test > "%USERPROFILE%\\jenkins_test.txt" && (
-                        echo SUCCESS: Can write to user profile
-                        del "%USERPROFILE%\\jenkins_test.txt"
-                    ) || echo FAILED: Cannot write to user profile
-                    
-                    echo Testing Docker socket access:
-                    echo. | docker version --format "{{.Server.Version}}" >nul 2>&1 && (
-                        echo SUCCESS: Can access Docker daemon
-                    ) || echo FAILED: Cannot access Docker daemon
-                '''
-            }
-        }
+        
         stage('Checkout') {
             steps {
                 git branch: 'JAV-01', url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git'
             }
         }
+        
         stage('Build') {
             steps {
                 dir('ImmunizationTracker') {
@@ -104,6 +101,7 @@ pipeline {
                 }
             }
         }
+        
         stage('Build Docker Image') {
             steps {
                 dir('ImmunizationTracker') {
@@ -114,6 +112,7 @@ pipeline {
                 }
             }
         }
+        
         stage('Push Docker Image') {
             steps {
                 script {
@@ -123,29 +122,41 @@ pipeline {
                 }
             }
         }
+        
         stage('Start Minikube') {
             steps {
                 script {
-                    bat '''
-                        @echo off
-                        minikube status > nul 2>&1 && (
-                            echo Found existing cluster, deleting...
-                            minikube delete
-                        ) || (
-                            echo No existing cluster found
-                        )
-                    '''
+                    try {
+                        // Clean up any existing clusters first
+                        bat '''
+                            @echo off
+                            echo Checking for existing minikube clusters...
+                            minikube status >nul 2>&1
+                            if %ERRORLEVEL% EQU 0 (
+                                echo Found existing cluster, deleting...
+                                minikube delete --all
+                                timeout /t 10 /nobreak >nul
+                            ) else (
+                                echo No existing cluster found, proceeding with fresh start
+                            )
+                        '''
+                    } catch (Exception e) {
+                        echo "Cluster cleanup completed: ${e.getMessage()}"
+                    }
             
                     // Start cluster with more conservative settings
                     bat """
+                        echo Starting new minikube cluster...
                         minikube start --driver=docker --cpus=2 --memory=2500 ^
                         --kubernetes-version=v1.28.0 ^
-                        --kubeconfig="${env.KUBECONFIG}"
+                        --kubeconfig="${env.KUBECONFIG}" ^
+                        --force
                     """
             
                     // Add verification with retries
                     retry(3) {
                         bat """
+                            echo Verifying cluster status...
                             minikube status
                             kubectl cluster-info
                             kubectl get nodes
@@ -154,27 +165,62 @@ pipeline {
                 }
             }
         }
+        
         stage('Deploy to Kubernetes') {
             steps {
                 dir('ImmunizationTracker/k8s') {
                     script {
+                        // Debug: Check what files are available
                         bat '''
-                            cd ImmunizationTracker/k8s
+                            echo Current directory:
+                            cd
+                            echo Files in current directory:
                             dir /b
-                            echo Content of mysql-pv.yaml:
-                            type mysql-pv.yaml
+                            
+                            echo Checking for k8s directory:
+                            if exist "k8s" (
+                                echo k8s directory found
+                                dir k8s /b
+                            ) else (
+                                echo k8s directory not found, checking parent directories
+                                cd ..
+                                dir /b | findstr k8s
+                            )
                         '''
             
-                        // Apply Kubernetes manifests with debug info
+                        // Apply Kubernetes manifests - adjust path as needed
                         bat '''
-                            kubectl apply -f ImmunizationTracker/k8s/mysql-pv.yaml
-                            kubectl apply -f ImmunizationTracker/k8s/mysql-deployment.yaml
-                            kubectl wait --for=condition=available deployment/mysql --timeout=300s
+                            echo Applying Kubernetes manifests...
                             
-                            kubectl apply -f ImmunizationTracker/k8s/deployment.yaml
-                            kubectl apply -f ImmunizationTracker/k8s/service.yaml
+                            if exist "mysql-pv.yaml" (
+                                kubectl apply -f mysql-pv.yaml
+                            ) else if exist "k8s\\mysql-pv.yaml" (
+                                kubectl apply -f k8s\\mysql-pv.yaml
+                            ) else (
+                                echo mysql-pv.yaml not found
+                            )
+                            
+                            if exist "mysql-deployment.yaml" (
+                                kubectl apply -f mysql-deployment.yaml
+                                kubectl wait --for=condition=available deployment/mysql --timeout=300s
+                            ) else if exist "k8s\\mysql-deployment.yaml" (
+                                kubectl apply -f k8s\\mysql-deployment.yaml
+                                kubectl wait --for=condition=available deployment/mysql --timeout=300s
+                            ) else (
+                                echo mysql-deployment.yaml not found
+                            )
+                            
+                            if exist "deployment.yaml" (
+                                kubectl apply -f deployment.yaml
+                                kubectl apply -f service.yaml
+                            ) else if exist "k8s\\deployment.yaml" (
+                                kubectl apply -f k8s\\deployment.yaml
+                                kubectl apply -f k8s\\service.yaml
+                            ) else (
+                                echo deployment.yaml not found
+                            )
+                            
                             kubectl rollout status deployment/immunization-tracker --timeout=300s
-                            
                             minikube service immunization-tracker --url
                         '''
                     }
@@ -185,6 +231,9 @@ pipeline {
     post {
         always {
             cleanWs()
+        }
+        failure {
+            echo "Pipeline failed. Check the logs above for details."
         }
     }
 }
