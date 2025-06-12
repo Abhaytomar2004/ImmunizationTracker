@@ -51,7 +51,7 @@ pipeline {
         stage('Verify Kubernetes Cluster') {
             steps {
                 script {
-                      bat 'minikube delete --all --purge || echo "No existing cluster to delete"'
+                        bat 'minikube delete --all --purge || echo "No existing cluster to delete"'
             bat '''
             minikube start ^
               --driver=docker ^
@@ -69,8 +69,8 @@ pipeline {
             bat 'set /p MINIKUBE_IP=<minikube_ip.txt'
             bat 'kubectl config set-cluster minikube --server=https://%MINIKUBE_IP%:8443 --insecure-skip-tls-verify=true'
             
-            // Wait for cluster to be ready
-            bat 'timeout 60 kubectl get nodes --request-timeout=30s || echo "Cluster not ready yet"'
+            // Wait for cluster to be ready (fixed timeout syntax)
+            bat 'timeout /T 60 /NOBREAK && kubectl get nodes --request-timeout=30s || echo "Cluster not ready yet"'
             
             // Verify cluster access
             bat 'kubectl cluster-info'
