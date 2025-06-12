@@ -6,8 +6,8 @@ pipeline {
     }
     environment {
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
-        MINIKUBE_HOME = 'C:/minikube'
-        KUBECONFIG = "${env.MINIKUBE_HOME.replace('\\','/')}/config"
+        MINIKUBE_HOME = 'C:\\minikube'  
+        KUBECONFIG = "${env.MINIKUBE_HOME}\\config"
     }
     stages {
         stage('Checkout') {
@@ -45,13 +45,30 @@ pipeline {
         stage('Start Minikube') {
             steps {
                 script {
-                  bat 'minikube status && minikube delete || echo "No existing cluster to delete"'
-            // Start cluster with your working configuration
-            bat 'minikube start --driver=docker --cpus=2 --memory=3759'
-            // Verify cluster is ready (no need for verbose flags since manual test worked)
-            bat 'minikube status'
-            // Optional: Add this if you need to wait for cluster components
-            bat 'kubectl wait --for=condition=Ready nodes --all --timeout=120s'
+                bat '''
+                        @echo off
+                        minikube status > nul 2>&1 && (
+                            echo Found existing cluster, deleting...
+                            minikube delete
+                        ) || (
+                            echo No existing cluster found
+                        )
+                    '''
+                    
+                    // Start cluster with explicit path configuration
+                    bat """
+                        minikube start --driver=docker --cpus=2 --memory=3759 ^
+                        --alsologtostderr -v=3 ^
+                        --kubernetes-version=v1.33.1 ^
+                        --kubeconfig="${env.KUBECONFIG}"
+                    """
+                    
+                    // Verify cluster with retries
+                    bat """
+                        minikube status
+                        kubectl cluster-info
+                        kubectl get nodes
+                    """
                 }
             }
         }
@@ -59,17 +76,17 @@ pipeline {
             steps {
                 dir('ImmunizationTracker/k8s') {
                     script {
-                         bat 'kubectl apply -f mysql-pv.yaml'
-                bat 'kubectl apply -f mysql-deployment.yaml'
-                // Wait for MySQL to be fully ready
-                bat 'kubectl wait --for=condition=available deployment/mysql --timeout=300s'
-                // Deploy main application
-                bat 'kubectl apply -f deployment.yaml'
-                bat 'kubectl apply -f service.yaml'
-                // Verify application deployment
-                bat 'kubectl rollout status deployment/immunization-tracker --timeout=300s'
-                // Optional: Get service URL for verification
-                bat 'minikube service immunization-tracker --url'
+                           bat 'timeout /t 30'
+                        
+                        bat """
+                            kubectl apply -f mysql-pv.yaml
+                            kubectl apply -f mysql-deployment.yaml
+                            kubectl wait --for=condition=available deployment/mysql --timeout=300s
+                            kubectl apply -f deployment.yaml
+                            kubectl apply -f service.yaml
+                            kubectl rollout status deployment/immunization-tracker --timeout=300s
+                            minikube service immunization-tracker --url
+                        """
                     }
                 }
             }
