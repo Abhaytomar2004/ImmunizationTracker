@@ -76,17 +76,25 @@ pipeline {
             steps {
                 dir('ImmunizationTracker/k8s') {
                     script {
-                           bat 'timeout /t 30'
-                        
-                        bat """
-                            kubectl apply -f mysql-pv.yaml
-                            kubectl apply -f mysql-deployment.yaml
-                            kubectl wait --for=condition=available deployment/mysql --timeout=300s
-                            kubectl apply -f deployment.yaml
-                            kubectl apply -f service.yaml
-                            kubectl rollout status deployment/immunization-tracker --timeout=300s
-                            minikube service immunization-tracker --url
-                        """
+                          bat '''
+                cd ImmunizationTracker/k8s
+                dir /b
+                echo Content of mysql-pv.yaml:
+                type mysql-pv.yaml
+            '''
+            
+            // 2. Apply Kubernetes manifests with debug info
+            bat '''
+                kubectl apply -f ImmunizationTracker/k8s/mysql-pv.yaml
+                kubectl apply -f ImmunizationTracker/k8s/mysql-deployment.yaml
+                kubectl wait --for=condition=available deployment/mysql --timeout=300s
+                
+                kubectl apply -f ImmunizationTracker/k8s/deployment.yaml
+                kubectl apply -f ImmunizationTracker/k8s/service.yaml
+                kubectl rollout status deployment/immunization-tracker --timeout=300s
+                
+                minikube service immunization-tracker --url
+            '''
                     }
                 }
             }
