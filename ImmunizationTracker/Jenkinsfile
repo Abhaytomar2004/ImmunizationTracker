@@ -6,15 +6,93 @@ pipeline {
     }
     environment {
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
-        MINIKUBE_HOME = 'C:/minikube'
-        KUBECONFIG = "${env.MINIKUBE_HOME}/config"
+        MINIKUBE_HOME = 'C:\\minikube'  
+        DOCKER_CONFIG = 'C:\\Users\\abhay tomar\\.docker'
     }
     stages {
+        stage('Check Jenkins User Context') {
+            steps {
+                script {
+                    try {
+                        bat '''
+                            echo === JENKINS USER CONTEXT CHECK ===
+                            
+                            echo Current User:
+                            whoami
+                            
+                            echo User Groups:
+                            whoami /groups
+                            
+                            echo Environment Variables:
+                            echo USERPROFILE: %USERPROFILE%
+                            echo USERNAME: %USERNAME%
+                            echo PATH: %PATH%
+                        '''
+                    } catch (Exception e) {
+                        echo "User context check failed: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+        
+        stage('Check Docker Access from Jenkins') {
+            steps {
+                script {
+                    try {
+                        bat '''
+                            echo === DOCKER ACCESS CHECK ===
+                            
+                            echo Docker Version:
+                            docker --version 2>nul || echo "Docker command failed"
+                            
+                            echo Docker Info:
+                            docker info 2>nul || echo "Docker info failed"
+                            
+                            echo Docker PS:
+                            docker ps 2>nul || echo "Docker ps failed"
+                        '''
+                    } catch (Exception e) {
+                        echo "Docker access check failed: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+        
+        stage('Check Minikube Access from Jenkins') {
+            steps {
+                script {
+                    try {
+                        bat '''
+                            echo === MINIKUBE ACCESS CHECK ===
+                            
+                            echo Minikube Version:
+                            minikube version 2>nul || echo "Minikube command failed"
+                            
+                            echo Minikube Config Location:
+                            echo Expected: %USERPROFILE%\\.minikube
+                            dir "%USERPROFILE%\\.minikube" 2>nul || echo "Minikube config directory not found"
+                            
+                            echo Checking for existing cluster:
+                            minikube status 2>nul || echo "No active minikube cluster"
+                            
+                            echo Checking profiles (this may show an error if no profiles exist - that's normal):
+                            minikube profile list 2>nul || echo "No minikube profiles found - will create one"
+                            
+                            exit 0
+                        '''
+                    } catch (Exception e) {
+                        echo "Minikube access check completed with warnings: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+        
         stage('Checkout') {
             steps {
                 git branch: 'JAV-01', url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git'
             }
         }
+        
         stage('Build') {
             steps {
                 dir('ImmunizationTracker') {
@@ -22,51 +100,151 @@ pipeline {
                 }
             }
         }
+        
         stage('Build Docker Image') {
             steps {
                 dir('ImmunizationTracker') {
                     script {
-                        def image = docker.build("arnold21/immunizationtracker:${env.BUILD_ID}")
-                        env.IMAGE_NAME = image.imageName()
+                       def image = docker.build("arnold21/immunizationtracker:${env.BUILD_ID}", ".")
+                       env.IMAGE_NAME = image.imageName()
                     }
                 }
             }
         }
+        
         stage('Push Docker Image') {
             steps {
                 script {
-                    docker.withRegistry(
-                        'https://index.docker.io/v1/',
-                        credentialsId: 'docker-hub-credentials'
-                    ) {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
                         docker.image(env.IMAGE_NAME).push()
                     }
                 }
             }
         }
+        
         stage('Start Minikube') {
             steps {
-                script {
-                    bat 'minikube stop || echo "Minikube not running"'
-                    bat 'minikube delete || echo "No existing cluster"'
-                    bat 'minikube start --driver=docker --cpus=2 --memory=4096'
-                    bat 'minikube docker-env | call'
-                    bat 'kubectl config use-context minikube'
+                 script {
+            try {
+                // More thorough cleanup
+                bat '''
+                    echo Performing complete Minikube cleanup...
+                    minikube delete --all --purge
+                    docker system prune -af
+                    timeout /t 15 /nobreak >nul
+                '''
+                
+                // Start with lighter Kubernetes version (v1.25.8 is very stable and lightweight)
+                bat """
+                    echo Starting optimized Minikube cluster...
+                    minikube start --driver=docker --cpus=2 --memory=2000 ^
+                    --kubernetes-version=v1.25.8 ^
+                    --extra-config=kubelet.cgroup-driver=systemd ^
+                    --addons=default-storageclass ^
+                    --addons=storage-provisioner
+                """
+                
+                // Verify with retries
+                retry(3) {
+                    bat '''
+                        echo "Cluster status:"
+                        minikube status
+                        echo "Kubernetes components:"
+                        kubectl get pods -A
+                        echo "Node resources:"
+                        kubectl top node
+                    '''
                 }
+            } catch (Exception e) {
+                // Enhanced error diagnostics
+                bat '''
+                    echo "=== FAILURE DIAGNOSTICS ==="
+                    minikube logs
+                    kubectl get events -A
+                    docker ps -a
+                '''
+                error("Minikube setup failed: ${e.getMessage()}")
             }
         }
+            }
+        }
+        
         stage('Deploy to Kubernetes') {
             steps {
-                dir('ImmunizationTracker/k8s') {
-                    script {
-                        bat 'kubectl apply -f mysql-pv.yaml'
-                        bat 'kubectl apply -f mysql-deployment.yaml'
-                        bat 'sleep 30'
-                        bat 'kubectl apply -f deployment.yaml'
-                        bat 'kubectl apply -f service.yaml'
-                        bat 'kubectl rollout status deployment/mysql --timeout=300s'
-                        bat 'kubectl rollout status deployment/immunization-tracker --timeout=300s'
-                    }
+                script {
+                    // First, check current directory and look for k8s files
+                    bat '''
+                        echo Current directory:
+                        cd
+                        echo Files in current directory:
+                        dir /b
+                        
+                        echo Checking for k8s directory:
+                        if exist "ImmunizationTracker\\k8s" (
+                            echo k8s directory found in ImmunizationTracker
+                            dir "ImmunizationTracker\\k8s" /b
+                        ) else if exist "k8s" (
+                            echo k8s directory found in current directory  
+                            dir k8s /b
+                        ) else (
+                            echo k8s directory not found, listing all yaml files
+                            dir *.yaml /s /b
+                        )
+                    '''
+        
+                    // Apply Kubernetes manifests with proper path handling
+                    bat '''
+                        echo Applying Kubernetes manifests...
+                        
+                        REM Set the correct path for k8s files
+                        if exist "ImmunizationTracker\\k8s" (
+                            set K8S_PATH=ImmunizationTracker\\k8s
+                        ) else if exist "k8s" (
+                            set K8S_PATH=k8s
+                        ) else (
+                            echo No k8s directory found, creating basic deployment
+                            goto :create_basic_deployment
+                        )
+                        
+                        REM Apply MySQL PV if exists
+                        if exist "%K8S_PATH%\\mysql-pv.yaml" (
+                            echo Applying MySQL PV...
+                            kubectl apply -f "%K8S_PATH%\\mysql-pv.yaml"
+                        )
+                        
+                        REM Apply MySQL deployment if exists
+                        if exist "%K8S_PATH%\\mysql-deployment.yaml" (
+                            echo Applying MySQL deployment...
+                            kubectl apply -f "%K8S_PATH%\\mysql-deployment.yaml"
+                            echo Waiting for MySQL deployment...
+                            kubectl wait --for=condition=available deployment/mysql --timeout=300s
+                        )
+                        
+                        REM Apply application deployment if exists
+                        if exist "%K8S_PATH%\\deployment.yaml" (
+                            echo Applying application deployment...
+                            kubectl apply -f "%K8S_PATH%\\deployment.yaml"
+                            if exist "%K8S_PATH%\\service.yaml" (
+                                kubectl apply -f "%K8S_PATH%\\service.yaml"
+                            )
+                        )
+                        
+                        goto :verify_deployment
+                        
+                        :create_basic_deployment
+                        echo Creating basic deployment for immunization tracker...
+                        kubectl create deployment immunization-tracker --image=arnold21/immunizationtracker:%BUILD_ID% --port=8080
+                        kubectl expose deployment immunization-tracker --type=NodePort --port=8080 --target-port=8080
+                        
+                        :verify_deployment
+                        echo Waiting for deployment to be ready...
+                        kubectl wait --for=condition=available deployment/immunization-tracker --timeout=300s
+                        
+                        echo Getting service URL...
+                        minikube service immunization-tracker --url
+                        
+                        echo Deployment completed successfully!
+                    '''
                 }
             }
         }
@@ -74,6 +252,12 @@ pipeline {
     post {
         always {
             cleanWs()
+        }
+        success {
+            echo "Pipeline completed successfully!"
+        }
+        failure {
+            echo "Pipeline failed. Check the logs above for details."
         }
     }
 }
