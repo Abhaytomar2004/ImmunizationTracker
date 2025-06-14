@@ -5,25 +5,16 @@ pipeline {
         jdk 'JDK-21'
     }
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
+        DOCKER_CONFIG = "${env.WORKSPACE}/.docker"
         MINIKUBE_HOME = 'C:/minikube'
-        KUBECONFIG = "${env.MINIKUBE_HOME.replace('\\','/')}/config"
     }
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'JAV-01', url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git'
-            }
-        }
-
-        stage('Setup Docker') {
-            steps {
-                script {
-                    // Ensure default context is used
-                    bat 'docker context use default'
-                    // Create .docker directory if missing
-                    bat 'mkdir "%USERPROFILE%\\.docker" || echo "Directory exists"'
-                }
+                checkout([$class: 'GitSCM', 
+                    branches: [[name: 'JAV-01']],
+                    userRemoteConfigs: [[url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git']]
+                ])
             }
         }
 
@@ -35,56 +26,41 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Docker Build & Push') {
             steps {
                 dir('ImmunizationTracker') {
                     script {
+                        // Build image first
                         def image = docker.build("arnold21/immunizationtracker:${env.BUILD_ID}")
-                        env.IMAGE_NAME = image.imageName()
+                        
+                        // Then login and push (using token authentication)
+                        withCredentials([usernamePassword(
+                            credentialsId: 'docker-hub-credentials',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_TOKEN'
+                        )]) {
+                            bat """
+                                echo %DOCKER_TOKEN% | docker login -u %DOCKER_USER% --password-stdin
+                                docker push ${image.imageName()}
+                            """
+                        }
                     }
                 }
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Deploy to Minikube') {
             steps {
                 script {
-                    // Using token-based authentication (required for 2FA)
-                    withCredentials([usernamePassword(
-                        credentialsId: 'docker-hub-credentials',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_TOKEN'
-                    )]) {
-                        bat """
-                            echo %DOCKER_TOKEN% | docker login -u %DOCKER_USER% --password-stdin
-                            docker push ${env.IMAGE_NAME}
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Start Minikube') {
-            steps {
-                script {
-                    bat 'minikube stop || echo "No cluster to stop"'
-                    bat 'minikube delete || echo "No cluster to delete"'
-                    bat 'minikube start --driver=docker --cpus=2 --memory=4096'
-                    bat 'minikube update-context'
-                }
-            }
-        }
-
-        stage('Deploy to Kubernetes') {
-            steps {
-                dir('ImmunizationTracker/k8s') {
-                    script {
+                    // Check if Minikube is already running
+                    bat 'minikube status || minikube start --driver=docker --force'
+                    
+                    // Apply Kubernetes manifests
+                    dir('ImmunizationTracker/k8s') {
                         bat 'kubectl apply -f mysql-pv.yaml'
                         bat 'kubectl apply -f mysql-deployment.yaml'
                         bat 'kubectl apply -f deployment.yaml'
                         bat 'kubectl apply -f service.yaml'
-                        bat 'kubectl rollout status deployment/mysql --timeout=300s'
-                        bat 'kubectl rollout status deployment/immunization-tracker --timeout=300s'
                     }
                 }
             }
@@ -93,10 +69,6 @@ pipeline {
     post {
         always {
             cleanWs()
-            script {
-                // Cleanup Docker login session
-                bat 'docker logout || echo "Already logged out"'
-            }
         }
     }
 }
