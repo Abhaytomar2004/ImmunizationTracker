@@ -21,4 +21,4 @@ EXPOSE 8081
 RUN addgroup --system spring && adduser --system --ingroup spring spring
 USER spring:spring
 
-ENTRYPOINT ["java", "-jar", "target/ImmunizationTracker-0.0.1-SNAPSHOT.jar"]
+ENTRYPOINT ["java", "-jar", "target/VaccineManagementSystem-0.0.1-SNAPSHOT.jar"]
