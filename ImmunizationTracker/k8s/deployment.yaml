@@ -2,8 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: immunization-tracker
-  labels:
-    app: immunization-tracker
 spec:
   replicas: 1
   selector:
@@ -15,33 +13,14 @@ spec:
         app: immunization-tracker
     spec:
       containers:
-      - name: immunization-tracker
+      - name: app
         image: arnold21/immunizationtracker:latest
-        imagePullPolicy: Always
         ports:
         - containerPort: 8081
         env:
-        - name: SPRING_PROFILES_ACTIVE
-          value: "prod"
         - name: SPRING_DATASOURCE_URL
-          value: "jdbc:mysql://mysql-service:3306/lol3?createTableIfNotExists=true"
+          value: "jdbc:mysql://mysql-service/lol3"
         - name: SPRING_DATASOURCE_USERNAME
           value: "root"
         - name: SPRING_DATASOURCE_PASSWORD
           value: "Anjana@3176"
-        resources:
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8081
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8081
-          initialDelaySeconds: 20
-          periodSeconds: 5
