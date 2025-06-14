@@ -5,159 +5,70 @@ pipeline {
         jdk 'JDK-21'
     }
     environment {
-        // Docker Configuration
-        DOCKER_HOST = 'tcp://localhost:2375'
-        DOCKER_TLS_VERIFY = '0'
-        COMPOSE_CONVERT_WINDOWS_PATHS = '1'
-        
-        // Minikube Configuration
-        MINIKUBE_HOME = 'C:\\minikube'  
-        MINIKUBE_IN_STYLE = 'false'
-        
-        // Credentials
         DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
-        
-        // Build Variables
-        IMAGE_NAME = "arnold21/immunizationtracker"
-        BUILD_TAG = "${env.BUILD_ID}"
+        MINIKUBE_HOME = 'C:/minikube'
+        KUBECONFIG = "${env.MINIKUBE_HOME.replace('\\','/')}/config"
     }
-
     stages {
-        stage('System Checks') {
-            steps {
-                script {
-                    bat '''
-                        echo === SYSTEM CONFIGURATION ===
-                        echo Docker Version: && docker --version
-                        echo Minikube Version: && minikube version
-                        echo Java Version: && java -version
-                        echo Maven Version: && mvn --version
-                    '''
-                }
-            }
-        }
-
         stage('Checkout') {
             steps {
-                git branch: 'JAV-01', 
-                url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git'
+                git branch: 'JAV-01', url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git'
             }
         }
-
-        stage('Build Application') {
+        stage('Build') {
             steps {
                 dir('ImmunizationTracker') {
                     bat 'mvn clean package -DskipTests'
                 }
             }
         }
-
-        stage('Docker Setup') {
-            steps {
-                script {
-                    bat '''
-                        echo === DOCKER CONFIGURATION ===
-                        net stop com.docker.service 2>nul
-                        icacls "C:\\ProgramData\\Docker" /grant "NT AUTHORITY\\SYSTEM:(F)" /T
-                        icacls "C:\\Program Files\\Docker" /grant "NT AUTHORITY\\SYSTEM:(F)" /T
-                        net start com.docker.service
-                        docker ps && echo "Docker access confirmed"
-                    '''
-                }
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 dir('ImmunizationTracker') {
                     script {
-                        docker.build("${IMAGE_NAME}:${BUILD_TAG}", ".").push()
+                        def image = docker.build("arnold21/immunizationtracker:${env.BUILD_ID}")
+                        env.IMAGE_NAME = image.imageName()
                     }
                 }
             }
         }
-
-        stage('Minikube Setup') {
+        stage('Push Docker Image') {
             steps {
                 script {
-                    bat '''
-                        echo === MINIKUBE INITIALIZATION ===
-                        minikube delete --all --purge 2>nul || echo "No existing cluster"
-                        docker system prune -af
-                        
-                        minikube start \
-                            --driver=docker \
-                            --cpus=2 \
-                            --memory=2000 \
-                            --kubernetes-version=v1.25.8 \
-                            --addons=default-storageclass \
-                            --addons=storage-provisioner \
-                            --force
-                            
-                        minikube status || exit /b 1
-                        kubectl cluster-info || exit /b 1
-                    '''
+                    docker.withRegistry('https://index.docker.io/v1/', env.DOCKERHUB_CREDENTIALS) {
+                        docker.image(env.IMAGE_NAME).push()
+                    }
                 }
             }
         }
-
+        stage('Start Minikube') {
+            steps {
+                script {
+                    bat 'minikube stop || echo "No cluster to stop"'
+                    bat 'minikube delete || echo "No cluster to delete"'
+                    bat 'minikube start --driver=docker --cpus=2 --memory=4096'
+                    bat 'minikube update-context'
+                }
+            }
+        }
         stage('Deploy to Kubernetes') {
             steps {
-                script {
-                    def k8sPath = fileExists('ImmunizationTracker/k8s') ? 
-                        'ImmunizationTracker/k8s' : 
-                        (fileExists('k8s') ? 'k8s' : null)
-                    
-                    if (k8sPath) {
-                        bat """
-                            echo Using Kubernetes manifests from ${k8sPath}
-                            kubectl apply -f ${k8sPath}/
-                        """
-                    } else {
-                        bat '''
-                            echo No k8s directory found, creating default deployment
-                            kubectl create deployment immunization-tracker \
-                                --image=${IMAGE_NAME}:${BUILD_TAG} \
-                                --port=8080
-                                
-                            kubectl expose deployment immunization-tracker \
-                                --type=NodePort \
-                                --port=8080 \
-                                --target-port=8080
-                        '''
+                dir('ImmunizationTracker/k8s') {
+                    script {
+                        bat 'kubectl apply -f mysql-pv.yaml'
+                        bat 'kubectl apply -f mysql-deployment.yaml'
+                        bat 'kubectl apply -f deployment.yaml'
+                        bat 'kubectl apply -f service.yaml'
+                        bat 'kubectl rollout status deployment/mysql --timeout=300s'
+                        bat 'kubectl rollout status deployment/immunization-tracker --timeout=300s'
                     }
-                    
-                    bat '''
-                        echo Waiting for deployment to stabilize...
-                        kubectl wait --for=condition=available deployment/immunization-tracker --timeout=300s
-                        echo Service URL: && minikube service immunization-tracker --url
-                    '''
                 }
             }
         }
     }
-
     post {
         always {
             cleanWs()
-            bat '''
-                echo === CLEANUP ===
-                docker system prune -f 2>nul
-                echo Cleanup completed
-            '''
-        }
-        success {
-            echo "Pipeline completed successfully!"
-            archiveArtifacts artifacts: 'ImmunizationTracker/target/*.jar', fingerprint: true
-        }
-        failure {
-            echo "Pipeline failed - check logs for details"
-            bat '''
-                echo === FAILURE DIAGNOSTICS ===
-                minikube logs
-                kubectl get events -A
-                docker ps -a
-            '''
         }
     }
 }
