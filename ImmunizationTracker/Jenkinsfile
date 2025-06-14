@@ -124,49 +124,48 @@ pipeline {
         
         stage('Start Minikube') {
             steps {
-                script {
-                    try {
-                        // Clean up any existing clusters first
-                        bat '''
-                            @echo off
-                            echo Checking for existing minikube clusters...
-                            minikube status >nul 2>&1
-                            if %ERRORLEVEL% EQU 0 (
-                                echo Found existing cluster, deleting...
-                                minikube delete --all
-                                timeout /t 10 /nobreak >nul
-                            ) else (
-                                echo No existing cluster found, proceeding with fresh start
-                            )
-                        '''
-                    } catch (Exception e) {
-                        echo "Cluster cleanup completed: ${e.getMessage()}"
-                    }
-            
-                    // Start cluster - REMOVED --kubeconfig flag
-                    bat """
-                        echo Starting new minikube cluster...
-                        minikube start --driver=docker --cpus=2 --memory=2500 ^
-                        --kubernetes-version=v1.28.0 ^
-                        --force
-                    """
-            
-                    // Set kubectl context to use minikube
-                    bat """
-                        echo Setting kubectl context...
-                        kubectl config use-context minikube
-                    """
-            
-                    // Add verification with retries
-                    retry(3) {
-                        bat """
-                            echo Verifying cluster status...
-                            minikube status
-                            kubectl cluster-info
-                            kubectl get nodes
-                        """
-                    }
+                 script {
+            try {
+                // More thorough cleanup
+                bat '''
+                    echo Performing complete Minikube cleanup...
+                    minikube delete --all --purge
+                    docker system prune -af
+                    timeout /t 15 /nobreak >nul
+                '''
+                
+                // Start with lighter Kubernetes version (v1.25.8 is very stable and lightweight)
+                bat """
+                    echo Starting optimized Minikube cluster...
+                    minikube start --driver=docker --cpus=2 --memory=2000 ^
+                    --kubernetes-version=v1.25.8 ^
+                    --extra-config=kubelet.cgroup-driver=systemd ^
+                    --addons=default-storageclass ^
+                    --addons=storage-provisioner
+                """
+                
+                // Verify with retries
+                retry(3) {
+                    bat '''
+                        echo "Cluster status:"
+                        minikube status
+                        echo "Kubernetes components:"
+                        kubectl get pods -A
+                        echo "Node resources:"
+                        kubectl top node
+                    '''
                 }
+            } catch (Exception e) {
+                // Enhanced error diagnostics
+                bat '''
+                    echo "=== FAILURE DIAGNOSTICS ==="
+                    minikube logs
+                    kubectl get events -A
+                    docker ps -a
+                '''
+                error("Minikube setup failed: ${e.getMessage()}")
+            }
+        }
             }
         }
         
