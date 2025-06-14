@@ -30,10 +30,9 @@ pipeline {
             steps {
                 dir('ImmunizationTracker') {
                     script {
-                        // Build image first
                         def image = docker.build("arnold21/immunizationtracker:${env.BUILD_ID}")
+                        env.IMAGE_NAME = image.imageName()
                         
-                        // Then login and push (using token authentication)
                         withCredentials([usernamePassword(
                             credentialsId: 'docker-hub-credentials',
                             usernameVariable: 'DOCKER_USER',
@@ -41,7 +40,7 @@ pipeline {
                         )]) {
                             bat """
                                 echo %DOCKER_TOKEN% | docker login -u %DOCKER_USER% --password-stdin
-                                docker push ${image.imageName()}
+                                docker push ${env.IMAGE_NAME}
                             """
                         }
                     }
@@ -52,10 +51,10 @@ pipeline {
         stage('Deploy to Minikube') {
             steps {
                 script {
-                    // Check if Minikube is already running
+                    // Ensure Minikube is running
                     bat 'minikube status || minikube start --driver=docker --force'
                     
-                    // Apply Kubernetes manifests
+                    // Apply manifests
                     dir('ImmunizationTracker/k8s') {
                         bat 'kubectl apply -f mysql-pv.yaml'
                         bat 'kubectl apply -f mysql-deployment.yaml'
@@ -65,10 +64,48 @@ pipeline {
                 }
             }
         }
+
+        // NEW: Deployment Verification Stage
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    // 1. Check rollout status with timeout
+                    timeout(time: 5, unit: 'MINUTES') {
+                        bat 'kubectl rollout status deployment/immunization-tracker --timeout=300s'
+                    }
+
+                    // 2. Verify pod status
+                    def podStatus = bat(script: 'kubectl get pods -l app=immunization-tracker -o jsonpath="{.items[0].status.phase}"', returnStdout: true).trim()
+                    if (podStatus != "Running") {
+                        error("Pod failed to start. Current status: ${podStatus}")
+                    }
+
+                    // 3. Get service URL and test connectivity
+                    def minikubeIp = bat(script: 'minikube ip', returnStdout: true).trim()
+                    def nodePort = bat(script: 'kubectl get svc immunization-service -o jsonpath=\'{.spec.ports[0].nodePort}\'', returnStdout: true).trim()
+                    def serviceUrl = "http://${minikubeIp}:${nodePort}"
+
+                    // 4. Basic health check
+                    def healthCheck = bat(script: "curl -s -o /dev/null -w \"%{http_code}\" ${serviceUrl}/actuator/health || echo 500", returnStdout: true).trim()
+                    if (healthCheck != "200") {
+                        error("Health check failed with status: ${healthCheck}")
+                    }
+
+                    // 5. Log application startup logs
+                    def podName = bat(script: 'kubectl get pods -l app=immunization-tracker -o jsonpath="{.items[0].metadata.name}"', returnStdout: true).trim()
+                    bat "kubectl logs ${podName} --tail=50"
+                }
+            }
+        }
     }
     post {
         always {
-            cleanWs()
+            // Cleanup and get final status
+            script {
+                bat 'kubectl get pods -o wide'
+                bat 'kubectl get svc'
+                cleanWs()
+            }
         }
     }
 }
