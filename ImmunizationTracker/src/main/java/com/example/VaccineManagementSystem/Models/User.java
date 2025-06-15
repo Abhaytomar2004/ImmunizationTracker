@@ -9,9 +9,9 @@ import lombok.experimental.FieldDefaults;
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity //for making class as entity in database
-@FieldDefaults(level= AccessLevel.PRIVATE) //for making fields as private
-@Data //contains getters and setters and required args constructor
+@Entity 
+@FieldDefaults(level= AccessLevel.PRIVATE)
+@Data 
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name="users")

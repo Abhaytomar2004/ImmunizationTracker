@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immunization-tracker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: immunization-tracker
+  template:
+    metadata:
+      labels:
+        app: immunization-tracker
+    spec:
+      containers:
+      - name: app
+        image: arnold21/immunizationtracker:latest
+        ports:
+        - containerPort: 8081
+        env:
+        - name: SPRING_DATASOURCE_URL
+          value: "jdbc:mysql://mysql-service/lol3"
+        - name: SPRING_DATASOURCE_USERNAME
+          value: "root"
+        - name: SPRING_DATASOURCE_PASSWORD
+          value: "Anjana@3176"
